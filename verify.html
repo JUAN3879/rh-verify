@@ -1,201 +1,298 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Verificador de Recibos RHv1 — Hash + Generador de URL/QR</title>
-<style>
-  :root{--brand:#0a539e}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;margin:0;background:#f7fafc;color:#0b1220}
-  header{background:var(--brand);color:#fff;padding:14px 18px}
-  h1{margin:0;font-size:18px}
-  main{max-width:980px;margin:18px auto;padding:0 12px 32px}
-  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.05);padding:16px;margin:12px 0}
-  .ok{background:#ecfdf5;border:1px solid #34d399;color:#065f46;border-radius:10px;padding:10px;margin:10px 0}
-  .bad{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px;padding:10px;margin:10px 0}
-  .info{background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;border-radius:10px;padding:10px;margin:10px 0}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Courier New',monospace}
-  label{font-size:12px;color:#334155;margin:8px 0 4px;display:block}
-  input,textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:14px;background:#fff}
-  textarea{min-height:64px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  button{background:var(--brand);color:#fff;border:none;border-radius:999px;padding:10px 14px;font-weight:600;cursor:pointer}
-  button.secondary{background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe}
-  .qr{display:inline-block;border:1px dashed #cbd5e1;border-radius:10px;padding:8px;background:#fff}
-  small{color:#475569}
-  details{margin-top:8px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Verificador de Recibos RHv1 — Modo compacto</title>
+  <style>
+    :root{
+      --bg:#f6f7fb; --card:#fff; --ink:#0b1220; --muted:#6b7280; --brand:#0a539e;
+      --ok:#10b981; --bad:#ef4444; --ring:rgba(10,83,158,.15);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    header{background:var(--brand);color:#fff;padding:18px}
+    header h1{margin:0;font-size:20px}
+    header p{margin:6px 0 0;font-size:13px;opacity:.95}
+    main{max-width:960px;margin:18px auto;padding:0 14px}
+
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 4px 16px var(--ring);padding:16px}
+    .title{font-weight:700;margin:0 0 10px;font-size:20px}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .col{flex:1 1 320px}
+    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 6px}
+    input,textarea,select{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font:inherit}
+    textarea{min-height:84px;resize:vertical}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Courier New",monospace}
+
+    .btn{appearance:none;border:0;border-radius:999px;padding:10px 14px;font-weight:600;background:#e5effb;color:#0a3b78;cursor:pointer}
+    .btn.primary{background:#0a539e;color:#fff}
+    .btn.secondary{background:#eef2f7;color:#0b1220}
+
+    .status{border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px}
+    .ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+    .bad{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}
+
+    details > summary{cursor:pointer;margin:8px 0;color:#0a539e}
+
+    /* Verificación: oculta guía y generador */
+    body[data-mode="verify"] .guide,
+    body[data-mode="verify"] .builder{display:none}
+
+    /* Generador: oculta acciones compactas */
+    body[data-mode="build"] #actionsRow{display:none}
+
+    /* Compacto cuando hay verificación (si no trae &ui=full) */
+    .compact #canonWrap, .compact #hashWrap, .compact #parsed {display:none}
+    .compact #actionsRow{display:flex;margin-top:8px}
+  </style>
 </head>
 <body>
-<header>
-  <h1>Verificador de Recibos RHv1 (Hash + Canónica) con Generador de URL/QR</h1>
-  <div style="opacity:.9;font-size:12px">Escanea un QR que apunte a esta página con parámetros <code>?h=HASH&c=CANON</code>. Aquí se calcula SHA‑256(c) y se compara con h.</div>
-</header>
-<main>
-  <div id="verify" class="card">
-    <h2>Resultado de verificación</h2>
-    <div id="status" class="info">Si entraste sin parámetros, usa el generador de abajo para crear el enlace y el QR.</div>
-    <div id="canonWrap" style="display:none">
-      <label>Cadena canónica recibida</label>
-      <textarea id="canon" class="mono" readonly></textarea>
-    </div>
-    <div id="hashWrap" style="display:none">
-      <div class="grid">
-        <div>
+  <header>
+    <h1>Verificador de Recibos RHv1 (Hash + Canónica)</h1>
+    <p>Escanea un QR que apunte a esta página con <code>?h=HASH&amp;c=CANON</code>. Se calcula SHA-256(c) y se compara con h. Usa <code>&amp;ui=full</code> para ver detalles.</p>
+  </header>
+  <main>
+
+    <!-- Resultado -->
+    <section id="result" class="card">
+      <h2 class="title">Resultado de verificación</h2>
+      <div id="status" class="status">Cargando…</div>
+
+      <div id="actionsRow" class="row" style="display:none">
+        <button id="seeMore" class="btn secondary">Ver detalles</button>
+      </div>
+
+      <div id="canonWrap">
+        <label>Cadena canónica recibida</label>
+        <textarea id="canon" class="mono" readonly></textarea>
+      </div>
+
+      <div id="hashWrap" class="row">
+        <div class="col">
           <label>HASH de la URL (h)</label>
-          <input id="h_url" class="mono" readonly>
+          <input id="h_url" class="mono" readonly />
         </div>
-        <div>
-          <label>HASH recalculado SHA‑256(c)</label>
-          <input id="h_calc" class="mono" readonly>
+        <div class="col">
+          <label>HASH recalculado SHA-256(c)</label>
+          <input id="h_calc" class="mono" readonly />
         </div>
       </div>
-    </div>
-    <details id="parsed" style="display:none">
-      <summary>Ver campos de la canónica</summary>
-      <div id="fields" class="grid" style="margin-top:8px"></div>
-    </details>
-  </div>
 
-  <div class="card">
-    <h2>¿Cómo se usa?</h2>
-    <ol>
-      <li>El <strong>QR debe ser un enlace (http/https)</strong>. Un QR con texto plano no abre verificación.</li>
-      <li>El enlace es así: <code>https://TU-SITIO/verify.html?h=HASH&c=CANONICA_URLENCODED</code>.</li>
-      <li>Esta página toma <code>c</code>, calcula <strong>SHA‑256(c)</strong> y lo compara con <code>h</code>. Si coinciden → <strong>VÁLIDO</strong>.</li>
-    </ol>
-    <p><small>Ejemplo canónica (RHv1): <span class="mono">RH|v1|FOLIO=035/2025|FECHA=20/06/2025|EMISOR_RFC=ROMJ8206233F6|RECEPTOR=ALFREDO MERCADO ESPINOSA|SERVICIO_FECHA=20/06/2025|TOTAL_CENTS=500000|FORMA=Efectivo</span></small></p>
-  </div>
+      <details id="parsed">
+        <summary>Ver campos de la canónica</summary>
+        <div id="fields" class="row"></div>
+      </details>
+    </section>
 
-  <div class="card">
-    <h2>Generar <em>tu</em> enlace y QR (para pegar en el recibo)</h2>
-    <div class="grid">
-      <div>
-        <label>Base URL de verificación (tu dominio)</label>
-        <input id="base" placeholder="https://tuusuario.github.io/rh-verify/verify.html">
-      </div>
-      <div>
-        <label>Folio</label>
-        <input id="FOLIO" placeholder="035/2025" value="035/2025">
-      </div>
-      <div>
-        <label>Fecha de emisión (dd/mm/aaaa)</label>
-        <input id="FECHA" placeholder="20/06/2025" value="20/06/2025">
-      </div>
-      <div>
-        <label>RFC emisor</label>
-        <input id="EMISOR_RFC" placeholder="ROMJ8206233F6" value="ROMJ8206233F6">
-      </div>
-      <div>
-        <label>Receptor</label>
-        <input id="RECEPTOR" placeholder="ALFREDO MERCADO ESPINOSA" value="ALFREDO MERCADO ESPINOSA">
-      </div>
-      <div>
-        <label>Fecha del servicio (dd/mm/aaaa)</label>
-        <input id="SERVICIO_FECHA" placeholder="20/06/2025" value="20/06/2025">
-      </div>
-      <div>
-        <label>Total (MXN)</label>
-        <input id="TOTAL" placeholder="$5,000.00" value="$5,000.00">
-      </div>
-      <div>
-        <label>Forma de pago</label>
-        <input id="FORMA" placeholder="Efectivo" value="Efectivo">
-      </div>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button id="build">1) Construir enlace</button>
-      <button class="secondary" id="copyLink">Copiar enlace</button>
-      <button class="secondary" id="mkqr">2) Generar QR</button>
-      <button class="secondary" id="copyData">Copiar Data URI</button>
-      <button class="secondary" id="dlPNG">Descargar PNG</button>
-    </div>
-    <label>Canónica (para el HASH)</label>
-    <textarea id="canon_gen" class="mono" readonly></textarea>
-    <div class="grid">
-      <div>
-        <label>HASH (SHA‑256 de la canónica)</label>
-        <input id="hash_gen" class="mono" readonly>
-      </div>
-      <div>
-        <label>Enlace de verificación</label>
-        <input id="link" class="mono" readonly>
-      </div>
-    </div>
-    <div class="row" style="margin-top:10px;align-items:flex-start">
-      <div id="qr" class="qr"></div>
-      <div style="flex:1;min-width:260px">
-        <label>Data URI del QR (png)</label>
-        <textarea id="datauri" class="mono" readonly></textarea>
-        <p><small>Inserta en tu recibo dentro de <code>&lt;div class="qrbox"&gt;</code> como <code>&lt;img src="..." alt="QR" style="width:100%;height:100%;object-fit:contain;"&gt;</code>.</small></p>
-      </div>
-    </div>
-  </div>
-</main>
+    <!-- Guía -->
+    <section class="card guide" style="margin-top:14px">
+      <h2 class="title">¿Cómo se usa?</h2>
+      <ol style="margin:0 0 8px 18px;line-height:1.5">
+        <li>El QR debe ser un <strong>enlace</strong> (http/https) hacia esta página con <code>?h=&amp;c=</code>.</li>
+        <li>Ejemplo: <code>https://TU-SITIO/verify.html?h=HASH&amp;c=CANON_URLENCODED</code>.</li>
+        <li>La página toma <code>c</code>, calcula <code>SHA-256(c)</code> y lo compara con <code>h</code>. Si coinciden → <strong>VÁLIDO</strong>.</li>
+      </ol>
+    </section>
 
-<!-- QRCodeJS desde CDN (requiere conexión cuando generes el QR) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>
-// ===== Utilidades =====
-const $ = s=>document.querySelector(s);
-const qp = new URLSearchParams(location.search);
-const clean = s => String(s??'').trim().replace(/\s+/g,' ');
-const toCents = v =>{ let s=String(v??'').trim().replace(/[^0-9.,-]/g,''); if(s.includes(',')&&s.includes('.')) s=s.replace(/,/g,''); else if(s.includes(',')&&!s.includes('.')) s=s.replace(',', '.'); const n=Number(s||0); return Number.isFinite(n)? Math.round(n*100):0; };
-const hex = buf => Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
-async function sha256(text){ const enc = new TextEncoder().encode(text); const buf = await crypto.subtle.digest('SHA-256', enc); return hex(buf); }
-function parseCanonical(canon){ const out={}; canon.split('|').forEach(part=>{ const [k,...rest]=part.split('='); if(rest.length){ out[k]=rest.join('='); }}); return out; }
+    <!-- Generador (se oculta si vienes con h & c) -->
+    <section class="card builder" style="margin-top:14px">
+      <h2 class="title">Generar tu enlace y QR (para pegar en el recibo)</h2>
+      <div class="row">
+        <div class="col">
+          <label>Base URL de verificación (tu dominio)</label>
+          <input id="base" placeholder="https://tuusuario.github.io/tu-repo/verify.html" />
+        </div>
+        <div class="col">
+          <label>Folio</label>
+          <input id="folio" value="035/2025" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label>Fecha de emisión (dd/mm/aaaa)</label>
+          <input id="fecha" value="20/06/2025" />
+        </div>
+        <div class="col">
+          <label>RFC emisor</label>
+          <input id="rfc" value="ROMJ8206233F6" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label>Receptor</label>
+          <input id="receptor" value="ALFREDO MERCADO ESPINOSA" />
+        </div>
+        <div class="col">
+          <label>Fecha del servicio (dd/mm/aaaa)</label>
+          <input id="svcdate" value="20/06/2025" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label>Total (MXN)</label>
+          <input id="total" value="$5,000.00" />
+        </div>
+        <div class="col">
+          <label>Forma de pago</label>
+          <input id="forma" value="Efectivo" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="build" class="btn primary">1) Construir enlace</button>
+        <button id="copyLink" class="btn">Copiar enlace</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="genQR" class="btn">2) Generar QR</button>
+        <button id="copyData" class="btn">Copiar Data URI</button>
+        <button id="dlPng" class="btn">Descargar PNG</button>
+      </div>
 
-// ===== VERIFICACIÓN POR URL =====
-async function verifyFromURL(){
-  const h = qp.get('h'); const c = qp.get('c');
-  const status = $('#status');
-  if(!h || !c){ status.innerHTML = 'Sin parámetros. Usa el generador para crear el enlace y el QR.'; return; }
-  const canon = decodeURIComponent(c);
-  $('#canonWrap').style.display='block'; $('#canon').value = canon;
-  $('#hashWrap').style.display='block'; $('#h_url').value=h;
-  const hcalc = await sha256(canon); $('#h_calc').value = hcalc;
-  const ok = (h.trim().toUpperCase() === hcalc.toUpperCase());
-  status.innerHTML = ok ? '<div class="ok">✔ Coincide: el HASH es válido para esta cadena canónica.</div>' : '<div class="bad">✖ No coincide: el HASH NO corresponde a esta cadena canónica.</div>';
-  const fields = parseCanonical(canon); const cont = $('#fields'); cont.innerHTML='';
-  Object.entries(fields).forEach(([k,v])=>{ const wrap=document.createElement('div'); wrap.innerHTML = `<label style="margin-top:0">${k}</label><input class="mono" value="${v}" readonly>`; cont.appendChild(wrap); });
-  $('#parsed').style.display='block';
-}
+      <label style="margin-top:10px">Canónica (para el HASH)</label>
+      <textarea id="canonOut" class="mono" readonly></textarea>
 
-// ===== GENERADOR DE ENLACE Y QR =====
-async function buildLink(){
-  const base = clean($('#base').value);
-  if(!base){ alert('Escribe la URL base donde alojarás este verificador.'); return; }
-  const C = {
-    FOLIO: clean($('#FOLIO').value),
-    FECHA: clean($('#FECHA').value),
-    EMISOR_RFC: clean($('#EMISOR_RFC').value),
-    RECEPTOR: clean($('#RECEPTOR').value),
-    SERVICIO_FECHA: clean($('#SERVICIO_FECHA').value),
-    TOTAL_CENTS: toCents($('#TOTAL').value),
-    FORMA: clean($('#FORMA').value)
-  };
-  const canon = ['RH|v1',`FOLIO=${C.FOLIO||'-'}`,`FECHA=${C.FECHA||'-'}`,`EMISOR_RFC=${C.EMISOR_RFC||'-'}`,`RECEPTOR=${C.RECEPTOR||'-'}`,`SERVICIO_FECHA=${C.SERVICIO_FECHA||'-'}`,`TOTAL_CENTS=${C.TOTAL_CENTS}`,`FORMA=${C.FORMA||'-'}`].join('|');
-  $('#canon_gen').value = canon;
-  const h = await sha256(canon); $('#hash_gen').value = h;
-  const link = `${base}?h=${encodeURIComponent(h)}&c=${encodeURIComponent(canon)}`;
-  $('#link').value = link;
-  return link;
-}
+      <div class="row">
+        <div class="col">
+          <label>HASH (SHA-256 de la canónica)</label>
+          <input id="hashOut" class="mono" readonly />
+        </div>
+        <div class="col">
+          <label>Enlace de verificación</label>
+          <textarea id="linkOut" class="mono" readonly style="min-height:60px"></textarea>
+        </div>
+      </div>
 
-function drawQR(link){
-  const dst = $('#qr'); dst.innerHTML='';
-  if(typeof QRCode==='undefined'){ alert('No se cargó la librería de QR (revisa tu conexión)'); return; }
-  new QRCode(dst,{text:link,width:270,height:270,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
-  setTimeout(()=>{ const img = dst.querySelector('img'); if(img&&img.src){ $('#datauri').value = img.src; } },120);
-}
+      <label style="margin-top:10px">Data URI del QR (png)</label>
+      <textarea id="pngOut" class="mono" readonly></textarea>
 
-window.addEventListener('DOMContentLoaded', verifyFromURL);
-$('#build').addEventListener('click', async()=>{ const link = await buildLink(); alert('Enlace generado. Ahora pulsa “2) Generar QR”.'); });
-$('#copyLink').addEventListener('click', ()=>navigator.clipboard.writeText($('#link').value));
-$('#mkqr').addEventListener('click', async()=>{ const link = await buildLink(); drawQR(link); });
-$('#copyData').addEventListener('click', ()=>navigator.clipboard.writeText($('#datauri').value));
-$('#dlPNG').addEventListener('click', ()=>{ const img = $('#qr').querySelector('img'); if(!img){ alert('Genera el QR primero.'); return; } const a=document.createElement('a'); a.href=img.src; a.download='qr-rhv1-link.png'; document.body.appendChild(a); a.click(); a.remove(); });
-</script>
+      <div class="row" style="margin-top:12px;align-items:flex-start">
+        <div id="qrcode" class="card" style="border-radius:12px;padding:10px"></div>
+      </div>
+
+      <p style="color:var(--muted);font-size:12px;margin-top:12px">
+        Inserta la Data URI en tu recibo dentro de <code>&lt;div class="qrbox"&gt;</code> como
+        <code>&lt;img src="..." alt="QR" style="width:100%;height:100%;object-fit:contain"&gt;</code>.
+      </p>
+    </section>
+  </main>
+
+  <!-- QRCodeJS (para el generador) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script>
+  const $ = s => document.querySelector(s);
+  const hex = buf => Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+  async function sha256(text){
+    const enc = new TextEncoder().encode(text);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return hex(buf);
+  }
+  function parseMoneyToCents(v){
+    if(!v) return 0; const n = String(v).replace(/[^0-9.\-]/g,'');
+    const f = Number(n||0); return Math.round(f * 100);
+  }
+  function buildCanonical(fields){
+    return [
+      'RH','v1',
+      'FOLIO='+fields.folio,
+      'FECHA='+fields.fecha,
+      'EMISOR_RFC='+fields.rfc,
+      'RECEPTOR='+fields.receptor,
+      'SERVICIO_FECHA='+fields.svcdate,
+      'TOTAL_CENTS='+fields.cents,
+      'FORMA='+fields.forma
+    ].join('|');
+  }
+  function urlEncodeCanon(c){
+    return encodeURIComponent(c);
+  }
+  function parseCanonical(canon){
+    const out={}; canon.split('|').forEach(part=>{
+      const [k,...rest]=part.split('=');
+      if(rest.length){ out[k]=rest.join('='); }
+    }); return out;
+  }
+
+  async function verifyFromURL(){
+    const qp = new URLSearchParams(location.search);
+    const h = qp.get('h'); let c = qp.get('c');
+    const ui = (qp.get('ui')||'min').toLowerCase();
+
+    if(h && c){
+      document.body.dataset.mode = 'verify';
+      // Decodificar c admitiendo '+' como espacios (si vino de formulario)
+      try{ c = decodeURIComponent(c.replace(/\+/g,'%20')); }catch(e){}
+      const hcalc = await sha256(c);
+      const ok = (String(h).trim().toUpperCase() === hcalc.toUpperCase());
+      $('#status').className = 'status '+(ok?'ok':'bad');
+      $('#status').innerHTML = ok ? '✔ Coincide: el HASH es válido para esta cadena canónica.'
+                                  : '✖ No coincide: el HASH NO corresponde a esta cadena canónica.';
+
+      // Rellenar detalles (quedan ocultos en modo compacto)
+      $('#canon').value = c; $('#h_url').value = h; $('#h_calc').value = hcalc;
+      const fields = parseCanonical(c); const cont = $('#fields'); cont.innerHTML='';
+      Object.entries(fields).forEach(([k,v])=>{
+        const wrap=document.createElement('div'); wrap.className='col';
+        wrap.innerHTML=`<label>${k}</label><input class="mono" value="${v}" readonly>`;
+        cont.appendChild(wrap);
+      });
+
+      // Compacto por defecto salvo &ui=full
+      const compact = (ui !== 'full');
+      const resultCard = document.getElementById('result');
+      if(compact){ resultCard.classList.add('compact'); } else { resultCard.classList.remove('compact'); }
+      if(compact){
+        const btn = document.getElementById('seeMore');
+        if(btn){ btn.onclick = ()=>{ resultCard.classList.remove('compact'); $('#actionsRow').style.display='none'; }; }
+      }
+    } else {
+      document.body.dataset.mode = 'build';
+      // Prefill base (GitHub Pages)
+      if(location.hostname.endsWith('github.io') && !$('#base').value){
+        $('#base').placeholder = location.origin + location.pathname.replace(/\/[^/]*$/,'/verify.html');
+      }
+    }
+  }
+
+  // --- Generador ---
+  async function buildLink(){
+    const base = $('#base').value.trim();
+    const cents = parseMoneyToCents($('#total').value);
+    const fields = {
+      folio: $('#folio').value.trim(),
+      fecha: $('#fecha').value.trim(),
+      rfc: $('#rfc').value.trim(),
+      receptor: $('#receptor').value.trim(),
+      svcdate: $('#svcdate').value.trim(),
+      cents,
+      forma: $('#forma').value.trim()
+    };
+    const canon = buildCanonical(fields);
+    const h = await sha256(canon);
+    const link = base + '?h=' + h + '&c=' + urlEncodeCanon(canon);
+    $('#canonOut').value = canon; $('#hashOut').value = h; $('#linkOut').value = link;
+    return {link, h, canon};
+  }
+  function ensureQR(){
+    if(!window._qr){ window._qr = new QRCode('qrcode', {width:180, height:180}); }
+    return window._qr;
+  }
+  function toDataURI(canvas){ try{return canvas.toDataURL('image/png');}catch(_){return '';} }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    verifyFromURL();
+
+    const $build = $('#build'), $copyLink = $('#copyLink'), $genQR = $('#genQR'),
+          $copyData = $('#copyData'), $dlPng = $('#dlPng');
+
+    if($build) $build.onclick = async ()=>{ await buildLink(); };
+    if($copyLink) $copyLink.onclick = async ()=>{ const {link}= await buildLink(); navigator.clipboard.writeText(link); };
+    if($genQR) $genQR.onclick = async ()=>{ const {link} = await buildLink(); const qr = ensureQR(); qr.clear(); qr.makeCode(link);
+      const img = document.querySelector('#qrcode img'); const canvas = document.querySelector('#qrcode canvas');
+      const uri = img ? img.src : (canvas ? toDataURI(canvas) : ''); $('#pngOut').value = uri || 'PNG vacío: genera el QR primero.'; };
+    if($copyData) $copyData.onclick = ()=>{ const val = $('#pngOut').value; if(val) navigator.clipboard.writeText(val); };
+    if($dlPng) $dlPng.onclick = ()=>{ const uri = $('#pngOut').value; if(!uri){ alert('PNG vacío: genera el QR primero.'); return; } const a=document.createElement('a'); a.href=uri; a.download='qr.png'; a.click(); };
+  });
+  </script>
 </body>
 </html>
